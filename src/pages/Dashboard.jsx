@@ -49,25 +49,34 @@ const Dashboard = () => {
     };
 
     const handleDeleteProject = async (id) => {
-        if (!window.confirm("Are you sure you want to delete this project? This cannot be undone.")) return;
+    // 1. Client-side Authorization Check
+    // We check the role immediately to prevent unnecessary dialogs or API calls
+    if (userRole !== 'ADMIN') {
+        alert("Access Denied: You do not have permission to delete projects. Only Admins can perform this action.");
+        return;
+    }
+
+    // 2. Confirmation Dialog (Only shows if the user IS an Admin)
+    if (!window.confirm("Are you sure you want to delete this project? This cannot be undone.")) return;
+    
+    try {
+        // 3. Send the delete request to the backend
+        await api.delete(`/projects/${id}`);
         
-        try {
-            // 1. Send the delete request to the backend
-            await api.delete(`/projects/${id}`);
-            
-            // 2. Optimistic UI Update: Instantly remove the project from the screen
-            // This is much faster than calling fetchProjects() again!
-            setProjects(projects.filter(project => project.id !== id));
-            
-        } catch (error) {
-            console.error("Delete error:", error);
-            if (error.response && error.response.status === 403) {
-                alert("Access Denied: Only Admins can delete projects.");
-            } else {
-                alert("An error occurred while trying to delete the project.");
-            }
+        // 4. Optimistic UI Update: Instantly remove the project from the screen
+        setProjects(projects.filter(project => project.id !== id));
+        
+    } catch (error) {
+        console.error("Delete error:", error);
+        
+        // Final fallback in case the backend also rejects the request (Security in depth)
+        if (error.response && error.response.status === 403) {
+            alert("Backend Access Denied: Your session may have expired or your permissions have changed.");
+        } else {
+            alert("An error occurred while trying to delete the project.");
         }
-    };
+    }
+};
 
     return (
         <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
