@@ -25,8 +25,16 @@ const LoginPage = () => {
             } else {
                 // Hitting your Spring Boot /login endpoint
                 const response = await api.post('/auth/login', { email, password });
-                login(response.data.token); // Save the JWT wristband!
-                navigate('/'); // Redirect to the Dashboard (which we will build next)
+                
+                // --- THE CRITICAL FIX IS HERE ---
+                // We pass the token AND the role to the AuthContext
+                login({
+                    token: response.data.token,
+                    role: response.data.role, 
+                    id: response.data.id
+                }); 
+                
+                navigate('/'); // Redirect to the Dashboard
             }
         } catch (err) {
             console.error(err);

@@ -10,8 +10,10 @@ const Dashboard = () => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
 
-    // --- NEW: Identify the user's role for access control ---
+    // Identify the user's role for access control
     const userRole = localStorage.getItem('role'); 
+    // Optional: Grab the user ID if your backend requires it for project creation
+    const userId = localStorage.getItem('userId');
 
     useEffect(() => {
         fetchProjects();
@@ -32,7 +34,10 @@ const Dashboard = () => {
             await api.post('/projects', { 
                 name, 
                 description, 
-                createdBy: { id: 1 } // Note: You can later make this dynamic based on the logged-in user
+                // We changed the variable name in Project.java to 'user' earlier!
+                // (Note: If your Spring Boot service extracts the user from the JWT automatically, 
+                // you can actually remove this 'user' field entirely.)
+                user: { id: userId || 1 } 
             });
             setName('');
             setDescription('');
@@ -43,14 +48,24 @@ const Dashboard = () => {
         }
     };
 
-    // --- NEW: Logic to handle project deletion (Admin only) ---
     const handleDeleteProject = async (id) => {
-        if (!window.confirm("Are you sure you want to delete this project?")) return;
+        if (!window.confirm("Are you sure you want to delete this project? This cannot be undone.")) return;
+        
         try {
+            // 1. Send the delete request to the backend
             await api.delete(`/projects/${id}`);
-            fetchProjects();
+            
+            // 2. Optimistic UI Update: Instantly remove the project from the screen
+            // This is much faster than calling fetchProjects() again!
+            setProjects(projects.filter(project => project.id !== id));
+            
         } catch (error) {
-            alert("Access Denied: Only Admins can delete projects.");
+            console.error("Delete error:", error);
+            if (error.response && error.response.status === 403) {
+                alert("Access Denied: Only Admins can delete projects.");
+            } else {
+                alert("An error occurred while trying to delete the project.");
+            }
         }
     };
 
@@ -96,7 +111,7 @@ const Dashboard = () => {
                                 View Tasks
                             </button>
 
-                            {/* --- ROLE-BASED UI: Only show the Delete button if the user is an ADMIN --- */}
+                            {/* ROLE-BASED UI: Only show the Delete button if the user is an ADMIN */}
                             {userRole === 'ADMIN' && (
                                 <button 
                                     onClick={() => handleDeleteProject(p.id)}
