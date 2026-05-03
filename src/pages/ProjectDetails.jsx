@@ -6,14 +6,19 @@ const ProjectDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const [tasks, setTasks] = useState([]);
-    const [users, setUsers] = useState([]); // Added for Team Assignment
+    
+    // --- UPDATED: This now only holds members of THIS project ---
+    const [projectMembers, setProjectMembers] = useState([]); 
+    
     const [title, setTitle] = useState('');
-    const [assignedToId, setAssignedToId] = useState(''); // New state
-    const [dueDate, setDueDate] = useState(''); // New state
+    const [assignedToId, setAssignedToId] = useState(''); 
+    const [dueDate, setDueDate] = useState(''); 
+
+    const userRole = localStorage.getItem('role');
 
     useEffect(() => {
         fetchTasks();
-        fetchUsers(); // Load team members on mount
+        fetchProjectData(); // Fetch project details to get the member list
     }, [id]);
 
     const fetchTasks = async () => {
@@ -25,24 +30,27 @@ const ProjectDetails = () => {
         }
     };
 
-    const fetchUsers = async () => {
+    // --- NEW: Fetch project details to get the specific team members ---
+    const fetchProjectData = async () => {
         try {
-            const response = await api.get('/users');
-            setUsers(response.data);
+            const response = await api.get(`/projects/${id}`);
+            // Assuming your Project entity has a 'members' list
+            setProjectMembers(response.data.members || []);
         } catch (error) {
-            console.error("Error fetching users", error);
+            console.error("Error fetching project members", error);
         }
     };
 
     const handleAddTask = async (e) => {
         e.preventDefault();
+        
+        if (!assignedToId) {
+            return alert("Please select a team member assigned to this project.");
+        }
+
         try {
-            await api.post('/tasks', { 
+            await api.post(`/tasks/project/${id}/assign/${assignedToId}`, { 
                 title, 
-                status: 'PENDING', 
-                project: { id: parseInt(id) },
-                // Sending new fields to backend
-                assignedTo: assignedToId ? { id: parseInt(assignedToId) } : null,
                 dueDate: dueDate || null
             });
             setTitle('');
@@ -50,7 +58,11 @@ const ProjectDetails = () => {
             setDueDate('');
             fetchTasks();
         } catch (error) {
-            alert("Error adding task");
+            if (error.response && error.response.status === 403) {
+                alert("Access Denied: Only Admins can create and assign tasks.");
+            } else {
+                alert("Error adding task. Please try again.");
+            }
         }
     };
 
@@ -59,7 +71,11 @@ const ProjectDetails = () => {
             await api.put(`/tasks/${taskId}/status?status=${newStatus}`);
             fetchTasks();
         } catch (error) {
-            alert("Error updating status");
+            if (error.response && error.response.status === 403) {
+                alert("Access Denied: You can only update tasks assigned to you.");
+            } else {
+                alert("Error updating status.");
+            }
         }
     };
 
@@ -69,11 +85,14 @@ const ProjectDetails = () => {
             await api.delete(`/tasks/${taskId}`);
             fetchTasks();
         } catch (error) {
-            alert("Error deleting task");
+            if (error.response && error.response.status === 403) {
+                alert("Access Denied: Only Admins can delete tasks.");
+            } else {
+                alert("Error deleting task.");
+            }
         }
     };
 
-    // Requirement: Overdue tracking logic
     const isOverdue = (date, status) => {
         if (!date || status === 'COMPLETED') return false;
         return new Date(date) < new Date().setHours(0,0,0,0);
@@ -85,81 +104,93 @@ const ProjectDetails = () => {
             
             <h2>Project Tasks</h2>
             
-            <form onSubmit={handleAddTask} style={{ marginBottom: '2rem', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                <input 
-                    placeholder="Task title" 
-                    value={title} 
-                    onChange={e => setTitle(e.target.value)} 
-                    required 
-                    style={{ padding: '8px', flex: '1 1 200px' }}
-                />
-                
-                {/* Team Assignment Dropdown */}
-                <select 
-                    value={assignedToId} 
-                    onChange={e => setAssignedToId(e.target.value)}
-                    style={{ padding: '8px' }}
-                >
-                    <option value="">Assign To...</option>
-                    {users.map(user => (
-                        <option key={user.id} value={user.id}>{user.email}</option>
-                    ))}
-                </select>
+            {userRole === 'ADMIN' && (
+                <form onSubmit={handleAddTask} style={{ marginBottom: '2rem', display: 'flex', flexWrap: 'wrap', gap: '10px', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+                    <input 
+                        placeholder="Task title" 
+                        value={title} 
+                        onChange={e => setTitle(e.target.value)} 
+                        required 
+                        style={{ padding: '8px', flex: '1 1 200px' }}
+                    />
+                    
+                    {/* --- UPDATED: Dropdown now uses projectMembers instead of all users --- */}
+                    <select 
+                        value={assignedToId} 
+                        onChange={e => setAssignedToId(e.target.value)}
+                        style={{ padding: '8px' }}
+                        required
+                    >
+                        <option value="">Assign To Member...</option>
+                        {projectMembers.map(member => (
+                            <option key={member.id} value={member.id}>{member.email}</option>
+                        ))}
+                    </select>
 
-                {/* Due Date Picker */}
-                <input 
-                    type="date" 
-                    value={dueDate} 
-                    onChange={e => setDueDate(e.target.value)}
-                    style={{ padding: '8px' }}
-                />
+                    <input 
+                        type="date" 
+                        value={dueDate} 
+                        onChange={e => setDueDate(e.target.value)}
+                        style={{ padding: '8px' }}
+                    />
 
-                <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                    Add Task
-                </button>
-            </form>
+                    <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                        Add Task
+                    </button>
+                </form>
+            )}
 
-            <div style={{ display: 'grid', gap: '10px' }}>
-                {tasks.map(t => {
-                    const overdue = isOverdue(t.dueDate, t.status);
-                    return (
-                        <div key={t.id} style={{ 
-                            padding: '1rem', 
-                            border: overdue ? '2px solid #dc3545' : '1px solid #ddd', 
-                            borderRadius: '8px',
-                            backgroundColor: overdue ? '#fff5f5' : (t.status === 'COMPLETED' ? '#f8f9fa' : 'white')
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ textDecoration: t.status === 'COMPLETED' ? 'line-through' : 'none', fontWeight: 'bold' }}>
-                                    {t.title}
-                                </span>
-                                {overdue && <span style={{ color: '#dc3545', fontSize: '0.8rem', fontWeight: 'bold' }}>OVERDUE</span>}
+            {tasks.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '3rem 1rem', backgroundColor: '#f8f9fa', borderRadius: '8px', color: '#666', border: '1px dashed #ccc' }}>
+                    <h3 style={{ margin: '0 0 10px 0', color: '#444' }}>No Tasks Available</h3>
+                    <p style={{ margin: 0, fontStyle: 'italic' }}>Please wait for a task to be added and assigned to you.</p>
+                </div>
+            ) : (
+                <div style={{ display: 'grid', gap: '10px' }}>
+                    {tasks.map(t => {
+                        const overdue = isOverdue(t.dueDate, t.status);
+                        return (
+                            <div key={t.id} style={{ 
+                                padding: '1rem', 
+                                border: overdue ? '2px solid #dc3545' : '1px solid #ddd', 
+                                borderRadius: '8px',
+                                backgroundColor: overdue ? '#fff5f5' : (t.status === 'COMPLETED' ? '#f8f9fa' : 'white')
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ textDecoration: t.status === 'COMPLETED' ? 'line-through' : 'none', fontWeight: 'bold' }}>
+                                        {t.title}
+                                    </span>
+                                    {overdue && <span style={{ color: '#dc3545', fontSize: '0.8rem', fontWeight: 'bold' }}>OVERDUE</span>}
+                                </div>
+                                
+                                <div style={{ fontSize: '0.85rem', color: '#666', margin: '8px 0' }}>
+                                    👤 {t.assignedTo ? t.assignedTo.email : 'Unassigned'} | 📅 Due: {t.dueDate || 'N/A'}
+                                </div>
+                                
+                                <div style={{ display: 'flex', gap: '5px', marginTop: '10px' }}>
+                                    {t.status !== 'COMPLETED' && (
+                                        <button 
+                                            onClick={() => updateStatus(t.id, 'COMPLETED')}
+                                            style={{ padding: '4px 8px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                        >
+                                            Done
+                                        </button>
+                                    )}
+                                    
+                                    {userRole === 'ADMIN' && (
+                                        <button 
+                                            onClick={() => deleteTask(t.id)}
+                                            style={{ padding: '4px 8px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                        >
+                                            Delete
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                            
-                            <div style={{ fontSize: '0.85rem', color: '#666', margin: '8px 0' }}>
-                                👤 {t.assignedTo ? t.assignedTo.email : 'Unassigned'} | 📅 Due: {t.dueDate || 'N/A'}
-                            </div>
-                            
-                            <div style={{ display: 'flex', gap: '5px', marginTop: '10px' }}>
-                                {t.status !== 'COMPLETED' && (
-                                    <button 
-                                        onClick={() => updateStatus(t.id, 'COMPLETED')}
-                                        style={{ padding: '4px 8px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                                    >
-                                        Done
-                                    </button>
-                                )}
-                                <button 
-                                    onClick={() => deleteTask(t.id)}
-                                    style={{ padding: '4px 8px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                                >
-                                    Delete
-                                </button>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 };

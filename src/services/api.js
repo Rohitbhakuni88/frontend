@@ -38,28 +38,36 @@ api.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
-// ==========================================
+/// ==========================================
 // 3. THE RESPONSE INTERCEPTOR (Secure Session Management)
 // ==========================================
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        // Handle 401 Unauthorized or 403 Forbidden (e.g., token expired or tampered with)
-        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+        // ONLY log out on 401 (Unauthorized / Token Expired)
+        if (error.response && error.response.status === 401) {
             console.warn("Session invalid or expired. Logging out...");
             
-            // Clear the invalid token
+            // Clear the invalid token and role
             localStorage.removeItem('token');
+            localStorage.removeItem('role');
+            localStorage.removeItem('userId');
             
-            // Redirect to login ONLY if they aren't already there (prevents infinite loops)
+            // Redirect to login ONLY if they aren't already there
             if (window.location.pathname !== '/login') {
                 window.location.href = '/login';
             }
         }
+        
+        // If it is 403 (Forbidden), DO NOT log them out.
+        // Just let the specific component handle the "Access Denied" error.
+        if (error.response && error.response.status === 403) {
+            console.warn("403 Forbidden: You do not have the required Role to access this data.");
+        }
+
         return Promise.reject(error);
     }
 );
-
 export default api;
 
 
@@ -90,13 +98,36 @@ export const deleteProject = async (projectId) => {
 };
 
 /**
- * AUTHENTICATION ENDPOINTS (Examples, adjust paths if yours are different)
+ * TEAM MANAGEMENT ENDPOINTS (Admin Only)
+ */
+
+// Add a user to a specific project
+export const addMemberToProject = async (projectId, userId) => {
+    const response = await api.post(`/projects/${projectId}/members/${userId}`);
+    return response.data;
+};
+
+// Remove a user from a specific project
+export const removeMemberFromProject = async (projectId, userId) => {
+    const response = await api.delete(`/projects/${projectId}/members/${userId}`);
+    return response.data;
+};
+// --- USER MANAGEMENT ENDPOINTS ---
+
+// Fetch all users (Admin Only)
+export const getAllUsers = async () => {
+    const response = await api.get('/users');
+    return response.data;
+};
+
+/**
+ * AUTHENTICATION ENDPOINTS 
  */
 
 // Login user
 export const loginUser = async (credentials) => {
     const response = await api.post('/auth/login', credentials);
-    return response.data; // Usually returns { token: "ey..." }
+    return response.data; 
 };
 
 // Register user
